@@ -10,7 +10,7 @@
     body { margin: 0; background: #f4f5f7; color: #1f2933; }
     main { width: min(100% - 24px, 980px); margin: 28px auto; }
     h1 { margin: 0 0 18px; font-size: 24px; letter-spacing: 0; }
-    form { display: grid; grid-template-columns: 1fr 1fr 150px auto auto; gap: 10px; align-items: end; }
+    form { display: grid; grid-template-columns: 1fr 1fr 150px 100px auto auto auto; gap: 10px; align-items: end; }
     label { position: relative; display: grid; gap: 5px; font-size: 13px; font-weight: 600; }
     input, button { height: 42px; border: 1px solid #b8c0cc; border-radius: 4px; background: white; font: inherit; }
     input { width: 100%; padding: 0 10px; }
@@ -30,7 +30,7 @@
     @media (max-width: 760px) {
       main { margin-top: 16px; }
       form { grid-template-columns: 1fr 1fr; row-gap: 24px; }
-      form label:nth-child(3), .mode, button { grid-column: span 2; }
+      .mode, button { grid-column: span 2; }
       table, tbody, tr, td { display: block; }
       thead { display: none; }
       tr { border: 1px solid #d9dee5; margin-bottom: 10px; background: white; }
@@ -47,7 +47,9 @@
     <label>From station codes<input id="from" placeholder="PUNE, ANG" required autocomplete="off"><span id="fromError" class="error"></span></label>
     <label>To station codes<input id="to" placeholder="SBC, BNC" required autocomplete="off"><span id="toError" class="error"></span></label>
     <label>Journey date<input id="date" type="date" required></label>
+    <label>Max results<input id="maxResults" type="number" min="1" max="100" value="12" required inputmode="numeric"></label>
     <label class="mode"><input id="allDays" type="checkbox">All days</label>
+    <label class="mode"><input id="uniqueTrains" type="checkbox">Unique trains</label>
     <button id="searchButton" type="submit" disabled>Search</button>
   </form>
   <div id="status">Loading embedded timetable...</div>
@@ -118,7 +120,7 @@ function destinationStop(train, after, destination) {
   return -1;
 }
 
-function search(origin, destination, startDate) {
+function search(origin, destination, startDate, limit = 12) {
   const found = [];
   const firstServices = stationServices[origin] || [];
   for (const [firstTrain, firstStop] of firstServices) {
@@ -168,14 +170,14 @@ function search(origin, destination, startDate) {
   }
   return [...preferred.values()]
     .sort((a, b) => (a.arrival - a.departure) - (b.arrival - b.departure) || a.departure - b.departure)
-    .slice(0, 12);
+    .slice(0, limit);
 }
 
-function searchMany(origins, destinations, startDate) {
+function searchMany(origins, destinations, startDate, limit = 12) {
   const found = [];
   for (const origin of origins) {
     for (const destination of destinations) {
-      if (origin !== destination) found.push(...search(origin, destination, startDate));
+      if (origin !== destination) found.push(...search(origin, destination, startDate, limit));
     }
   }
   const unique = new Map();
@@ -186,20 +188,44 @@ function searchMany(origins, destinations, startDate) {
   }
   return [...unique.values()]
     .sort((a, b) => (a.arrival - a.departure) - (b.arrival - b.departure) || a.departure - b.departure)
-    .slice(0, 12);
+    .slice(0, limit);
 }
 
-function searchAllDays(origins, destinations, selectedDate) {
+function searchAllDays(origins, destinations, selectedDate, limit = 12) {
   const sunday = new Date(selectedDate);
   sunday.setDate(sunday.getDate() - sunday.getDay());
-  const days = [];
+  const combined = new Map();
   for (let offset = 0; offset < 7; offset++) {
     const date = new Date(sunday);
     date.setDate(date.getDate() + offset);
-    const fastest = searchMany(origins, destinations, date)[0];
-    if (fastest) days.push({ ...fastest, dayLabel: date.toLocaleDateString("en-IN", { weekday: "short" }) });
+    const dayLabel = date.toLocaleDateString("en-IN", { weekday: "short" });
+    for (const item of searchMany(origins, destinations, date, limit)) {
+      const key = item.legs.map(leg => leg.join(":")).join("|");
+      const current = combined.get(key);
+      if (current) {
+        current.dayLabels.push(dayLabel);
+      } else {
+        combined.set(key, { ...item, dayLabels: [dayLabel] });
+      }
+    }
   }
-  return days;
+  return [...combined.values()]
+    .sort((a, b) => (a.arrival - a.departure) - (b.arrival - b.departure) || a.departure - b.departure)
+    .slice(0, limit)
+    .map(item => ({ ...item, dayLabel: item.dayLabels.join(", ") }));
+}
+
+function filterUniqueTrains(items, limit) {
+  const used = new Set();
+  const kept = [];
+  for (const item of items) {
+    const trains = item.legs.map(leg => leg[0]);
+    if (trains.some(train => used.has(train))) continue;
+    trains.forEach(train => used.add(train));
+    kept.push(item);
+    if (kept.length === limit) break;
+  }
+  return kept;
 }
 
 function render(items) {
@@ -266,10 +292,17 @@ document.getElementById("searchForm").addEventListener("submit", event => {
   const date = new Date(`${document.getElementById("date").value}T12:00:00`);
   const started = performance.now();
   const allDays = document.getElementById("allDays").checked;
-  const items = allDays ? searchAllDays(origins, destinations, date) : searchMany(origins, destinations, date);
+  const maxResultsInput = document.getElementById("maxResults");
+  const maxResults = Math.min(100, Math.max(1, Number.parseInt(maxResultsInput.value, 10) || 12));
+  maxResultsInput.value = String(maxResults);
+  const uniqueTrains = document.getElementById("uniqueTrains").checked;
+  const searchLimit = uniqueTrains ? Math.min(400, maxResults * 8) : maxResults;
+  const found = allDays ? searchAllDays(origins, destinations, date, searchLimit) : searchMany(origins, destinations, date, searchLimit);
+  const items = uniqueTrains ? filterUniqueTrains(found, maxResults) : found;
   render(items);
-  const scope = allDays ? `${items.length} day${items.length === 1 ? "" : "s"}` : `${items.length} result${items.length === 1 ? "" : "s"}`;
-  document.getElementById("status").textContent = `${scope} · ${(performance.now() - started).toFixed(0)} ms · minimum change ${MIN_TRANSFER} min`;
+  const scope = `${items.length} result${items.length === 1 ? "" : "s"}`;
+  const filtered = uniqueTrains ? ` · unique trains (${found.length - items.length} overlapping hidden)` : "";
+  document.getElementById("status").textContent = `${scope} · ${(performance.now() - started).toFixed(0)} ms · minimum change ${MIN_TRANSFER} min${filtered}`;
 });
 
 loadData();
