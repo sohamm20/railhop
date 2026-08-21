@@ -24,34 +24,33 @@
 
 ## 🏗️ Architecture & How It Works
 
-1. **Pre-compiled Static Dataset:** Train schedules and station matrices are compressed into lightweight static assets.
-2. **In-Browser Routing Algorithm:** Uses a client-side transit routing algorithm to find valid transfers within specified layover windows.
-3. **PWA & Static Hosting:** Hosted as a static application on Netlify with zero server maintenance costs.
+- **Zero Dependencies:** Pure vanilla HTML, CSS, and JavaScript contained in a single `index.html` file.
+- **No Build Tools or Backend:** No Node.js, Python, npm, bundlers, or servers needed.
+- **In-Browser Routing Algorithm:** The transit routing algorithm and compressed timetable dataset run entirely inside the client's browser engine.
 
 ---
 
-## 🚀 Quickstart & Local Setup
+## 🚀 Quickstart & Usage
 
-Because this project is 100% client-side and serverless, getting started takes less than a minute:
+Because this project is a **single, standalone `index.html` file**, there are zero dependencies to install:
 
-### 1. Clone the repository
-```bash
-git clone https://github.com/your-username/railhop.git
-cd railhop
-```
+### Option 1: Just open `index.html`
+- **macOS:**
+  ```bash
+  open index.html
+  ```
+- **Windows:**
+  ```cmd
+  start index.html
+  ```
+- **Linux:**
+  ```bash
+  xdg-open index.html
+  ```
+*(Or simply double-click `index.html` in your file manager).*
 
-### 2. Run locally
-You can serve the directory using any static file server:
-
-```bash
-# Using Python
-python3 -m http.server 8000
-
-# OR using Node
-npx serve .
-```
-
-Open `http://localhost:8000` in your browser.
+### Option 2: Deploy to any static host
+Drag and drop `index.html` onto **Netlify Drop**, **GitHub Pages**, **Vercel**, or **Cloudflare Pages** — it works instantly out of the box.
 
 ---
 
